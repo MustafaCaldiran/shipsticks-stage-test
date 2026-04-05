@@ -1,0 +1,28 @@
+{
+  "name": "shipsticks-qa-automation",
+  "version": "1.0.0",
+  "description": "Playwright end-to-end tests for the Ship Sticks booking flow",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "HEADED=true playwright test",
+    "test:debug": "HEADED=true SLOW_MO=300 playwright test --debug",
+    "test:ci": "playwright test --reporter=html,line",
+    "test:parallel": "WORKERS=4 FULLY_PARALLEL=true playwright test",
+    "test:parallel-headed": "HEADED=true SLOW_MO=300 WORKERS=4 FULLY_PARALLEL=true playwright test",
+    "test:ui": "playwright test --ui",
+    "test:chromium": "BROWSERS=chromium playwright test",
+    "test:firefox": "BROWSERS=firefox playwright test",
+    "test:webkit": "BROWSERS=webkit playwright test",
+    "test:all-browsers": "BROWSERS=chromium,firefox,webkit playwright test",
+    "setup": "npm install && npx playwright install chromium --with-deps",
+    "clean": "rm -rf reports/ test-results/ playwright-report/"
+  },
+  "keywords": ["qa", "automation", "playwright", "shipsticks", "e2e", "page-object-model"],
+  "author": "Mustafa Caldiran",
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/node": "^25.3.5",
+    "dotenv": "^16.4.5"
+  }
+}
