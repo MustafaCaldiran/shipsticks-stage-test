@@ -36,15 +36,21 @@ module.exports = async function globalSetup() {
         ignoreHTTPSErrors: true,
     });
 
-    // Step 1: GET the login page and extract the CSRF token
-    const loginPageResponse = await apiContext.get('/users/sign_in');
-    const html = await loginPageResponse.text();
-
-    const csrfMatch = html.match(/<meta[^>]+name="csrf-token"[^>]+content="([^"]+)"/);
-    if (!csrfMatch) {
-        throw new Error('globalSetup: could not find csrf-token meta tag on login page');
+    // Step 1: GET the login page and extract the CSRF token (retry up to 3 times)
+    let csrfToken;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        const loginPageResponse = await apiContext.get('/users/sign_in');
+        const html = await loginPageResponse.text();
+        const csrfMatch = html.match(/<meta[^>]+name="csrf-token"[^>]+content="([^"]+)"/);
+        if (csrfMatch) {
+            csrfToken = csrfMatch[1];
+            break;
+        }
+        if (attempt === 3) {
+            throw new Error('globalSetup: could not find csrf-token meta tag on login page after 3 attempts');
+        }
+        await new Promise(r => setTimeout(r, 2000));
     }
-    const csrfToken = csrfMatch[1];
 
     // Step 2: POST credentials with the CSRF token (form-encoded, same as the browser)
     const body = new URLSearchParams({
