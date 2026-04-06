@@ -22,6 +22,7 @@ const requestedBrowsers = (process.env.BROWSERS || 'chromium')
   .filter(Boolean);
 
 module.exports = defineConfig({
+  globalSetup: require.resolve('./utils/globalSetup'),
   testDir: './tests',
   fullyParallel: process.env.FULLY_PARALLEL === 'true',
   forbidOnly: !!process.env.CI,

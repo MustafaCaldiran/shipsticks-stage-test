@@ -29,3 +29,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+README2.md
+ShipSticks.md
+.auth/

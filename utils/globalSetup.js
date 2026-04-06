@@ -1,48 +1,77 @@
-const { chromium } = require('@playwright/test');
+const { request } = require('@playwright/test');
 const path = require('path');
+const fs = require('fs');
 
 const AUTH_CREDENTIALS = {
     email: 'john@gmail.com',
     password: 'Password',
 };
 
+const BASE_URL = 'https://www.app.staging.shipsticks.com';
 const STORAGE_STATE_PATH = path.resolve(__dirname, '../.auth/storageState.json');
 
+/**
+ * Global setup — runs once before the entire test suite.
+ *
+ * How the API login works:
+ * 1. GET /users/sign_in  — Rails renders a login page containing a CSRF token
+ *                          in a <meta name="csrf-token"> tag. We grab it here.
+ * 2. POST /users/sign_in — Send credentials + CSRF token as a form submission,
+ *                          exactly the way the browser does it.
+ *                          The server sets session cookies in the response.
+ * 3. apiContext.storageState() — Playwright captures all cookies from the HTTP
+ *                                session and writes them to .auth/storageState.json.
+ * 4. Tests that import from utils/fixtures.js start with that file pre-loaded
+ *    into their browser context, so they are already authenticated.
+ *
+ * This replaces the old UI-based login (launching a browser, clicking through
+ * the sign-in modal) — it is faster, more reliable, and has no flakiness risk.
+ */
 module.exports = async function globalSetup() {
-    const browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({
+    // Ensure .auth/ directory exists
+    fs.mkdirSync(path.dirname(STORAGE_STATE_PATH), { recursive: true });
+
+    const apiContext = await request.newContext({
+        baseURL: BASE_URL,
         ignoreHTTPSErrors: true,
-        viewport: { width: 1280, height: 800 },
     });
-    const page = await context.newPage();
 
-    // Block chat widgets to avoid interference
-    await page.route(/intercom|chat-widget|livechat|zendesk|freshchat|crisp|tawk/, route => route.abort());
+    // Step 1: GET the login page and extract the CSRF token
+    const loginPageResponse = await apiContext.get('/users/sign_in');
+    const html = await loginPageResponse.text();
 
-    await page.goto('https://app.staging.shipsticks.com', { waitUntil: 'domcontentloaded' });
+    const csrfMatch = html.match(/<meta[^>]+name="csrf-token"[^>]+content="([^"]+)"/);
+    if (!csrfMatch) {
+        throw new Error('globalSetup: could not find csrf-token meta tag on login page');
+    }
+    const csrfToken = csrfMatch[1];
 
-    // Accept cookies if present
-    try {
-        const cookieBtn = page.getByRole('button', { name: /accept|allow/i });
-        await cookieBtn.click({ timeout: 5000 });
-    } catch { }
+    // Step 2: POST credentials with the CSRF token (form-encoded, same as the browser)
+    const body = new URLSearchParams({
+        utf8: '✓',
+        authenticity_token: csrfToken,
+        'user[email]': AUTH_CREDENTIALS.email,
+        'user[password]': AUTH_CREDENTIALS.password,
+        'user[remember_me]': '0',
+    });
 
-    // Open Sign In menu
-    await page.getByText('Sign In').click();
-    await page.getByRole('menuitem', { name: 'Sign In' }).click();
+    const loginResponse = await apiContext.post('/users/sign_in', {
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'Referer': `${BASE_URL}/users/sign_in`,
+        },
+        data: body.toString(),
+    });
 
-    // Fill login modal
-    await page.getByPlaceholder('Email address').fill(AUTH_CREDENTIALS.email);
-    await page.getByRole('textbox', { name: 'Password*' }).fill(AUTH_CREDENTIALS.password);
-    await page.getByRole('button', { name: 'Log In' }).click();
+    if (!loginResponse.ok()) {
+        throw new Error(`globalSetup: login request failed with status ${loginResponse.status()}`);
+    }
 
-    // Wait until logged in (header shows user name)
-    await page.waitForSelector('span[class*="Hi,"]', { timeout: 25000 }).catch(() =>
-        page.waitForURL(/(?!.*login)/, { timeout: 25000 })
-    );
+    // Step 3: Save cookies to .auth/storageState.json
+    await apiContext.storageState({ path: STORAGE_STATE_PATH });
+    await apiContext.dispose();
 
-    // Save full storage state (cookies + localStorage)
-    await context.storageState({ path: STORAGE_STATE_PATH });
-
-    await browser.close();
+    console.log(`globalSetup: API login complete, session saved to ${STORAGE_STATE_PATH}`);
 };
