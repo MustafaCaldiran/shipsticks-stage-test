@@ -56,7 +56,7 @@ test.describe('Network Capture', () => {
     await home.fillSignUpForm(testData.authData.signUp);
     await home.clickContinueToCreatePassword();
     await home.fillPasswordFields(testData.authData.signUp.password);
-    await home.verifyYourNumber();
+    await home.skipVerifyYourNumber();
     await home.assertLoggedIn(testData.authData.signUp.firstName);
 
     saveCapture('sign_up_flow', log);

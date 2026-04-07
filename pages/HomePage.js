@@ -43,7 +43,7 @@ class HomePage extends BasePage {
 
         this.signUpPasswordField =    page.locator('#password')
         this.confirmSignUpPasswordField =   page.getByRole('textbox', { name: 'Confirm Password*' })
-        this.signUpTermsCheckbox =     page.locator("span[id='headlessui-control-_r_al_'] span[class='icon-check flex-shrink-0 w-[17px] h-[17px] transition-colors group-data-[checked]:!text-white group-data-[disabled]:text-neutral-600']")
+        this.signUpTermsCheckbox =    page.getByRole('checkbox', { name: 'By creating an account, you' })
 
         this.finishSignUpButton =    page.getByRole('button', { name: /Finish sign up and verify number/i })
         this.verifyYourNumberHeading =  page.getByRole('heading', { name: /Verify your phone number/i })
@@ -108,10 +108,8 @@ class HomePage extends BasePage {
     async fillPasswordFields(password) {
         await expect(this.signUpPasswordField).toBeVisible({ timeout: 15000 });
         await this.signUpPasswordField.waitFor({ state: 'attached', timeout: 10000 });
-        await this.signUpPasswordField.focus();
-        await this.signUpPasswordField.pressSequentially(password, { delay: 50 });
-        await this.confirmSignUpPasswordField.focus();
-        await this.confirmSignUpPasswordField.pressSequentially(password, { delay: 50 });
+        await this.typeWithFocusGuard(this.signUpPasswordField, password);
+        await this.typeWithFocusGuard(this.confirmSignUpPasswordField, password);
         await expect(this.signUpTermsCheckbox).toBeVisible({ timeout: 10000 });
         await expect(this.signUpTermsCheckbox).toBeEnabled({ timeout: 10000 });
         await this.signUpTermsCheckbox.click();
@@ -121,7 +119,7 @@ class HomePage extends BasePage {
 
     }
 
-    async verifyYourNumber(){
+    async skipVerifyYourNumber(){
         await expect(this.verifyYourNumberHeading).toBeVisible();
         await expect(this.skipForNowButtonInVerificationStep).toBeVisible();
         await this.skipForNowButtonInVerificationStep.click();

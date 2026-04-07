@@ -18,7 +18,7 @@ test.describe('Ship Sticks login flow', () => {
 
         await homePage.fillPasswordFields(testData.authData.signUp.password);
 
-        await homePage.verifyYourNumber();
+        await homePage.skipVerifyYourNumber();
         await homePage.assertLoggedIn(testData.authData.signUp.firstName);
     });
 })

@@ -1,17 +1,16 @@
 const { test, expect } = require('@playwright/test');
-const HomePage = require('../pages/HomePage');
 const BookingStep1Page = require('../pages/BookingStep1Page');
 const TravelersPage = require('../pages/TravelersPage');
 const PaymentPage = require('../pages/PaymentPage');
 const ReviewPage = require('../pages/ReviewPage');
 const OrderConfirmationPage = require('../pages/OrderConfirmationPage');
 const testData = require('../utils/testData');
+const { createUserViaUi } = require('../utils/createUser');
 
 const scenario = testData.scenarios.challenge;
 
 test.describe('Ship Sticks E2E flow', () => {
     test('sign up then complete booking step 1', async ({ page, baseURL }) => {
-        const homePage = new HomePage(page, baseURL);
         const bookingPage = new BookingStep1Page(page, baseURL);
         const travelersPage = new TravelersPage(page);
         const paymentPage = new PaymentPage(page);
@@ -19,22 +18,7 @@ test.describe('Ship Sticks E2E flow', () => {
         const orderConfirmationPage = new OrderConfirmationPage(page);
 
         // ── Sign up ──────────────────────────────────────────────────────────
-        await homePage.goto();
-        await homePage.clickSignIn();
-        await homePage.assertSignInModalVisible();
-
-        await homePage.switchToSignUp();
-        await homePage.assertSignUpModalVisible();
-
-        const signUpData = testData.authData.signUp;
-        await homePage.fillSignUpForm(signUpData);
-         
-        await homePage.clickContinueToCreatePassword();
-
-        await homePage.fillPasswordFields(signUpData.password);
-
-        await homePage.verifyYourNumber();
-        await homePage.assertLoggedIn(signUpData.firstName);
+        const { homePage, ...signUpData } = await createUserViaUi(page, baseURL);
 
         // ── Start a quote (fills Where from / Where to) ──────────────────────
         await homePage.startQuote({
@@ -69,7 +53,7 @@ test.describe('Ship Sticks E2E flow', () => {
         await paymentPage.selectPickupMethod(scenario.pickupMethod);
         await paymentPage.assertPickupFee(scenario.pickupMethod);
         await paymentPage.fillCreditCard(testData.authData.payment);
-        await page.pause();
+       
         await paymentPage.proceedToReviewOrder();
 
         // ── Review Page ──────────────────────────────────────────────────────
