@@ -18,97 +18,44 @@
 
 const { test, expect } = require('@playwright/test');
 const HomePage = require('../pages/HomePage');
+const { withNetworkLogging, attachNetworkLogging, dumpCookies } = require('../utils/networkLogger');
 
 const PROD_URL      = 'https://www.shipsticks.com';
 const PROD_EMAIL    = process.env.PROD_EMAIL    || 'shipsticksprodtest@gmail.com';
 const PROD_PASSWORD = process.env.PROD_PASSWORD || 'Password';
 
-// ─── helpers ────────────────────────────────────────────────────────────────
-
-/** Attach request + response loggers immediately so no early requests are missed. */
-function attachNetworkLogger(page, label) {
-  page.on('request', req => {
-    const url = req.url();
-    if (!url.includes('shipsticks')) return;
-    const h = req.headers();
-    console.log(`\n[${label}][REQ] ${req.method()} ${url}`);
-    console.log(`  cookie:        ${(h['cookie'] || '(none)').substring(0, 400)}`);
-    console.log(`  authorization: ${h['authorization'] || '(none)'}`);
-  });
-
-  page.on('response', async res => {
-    const url    = res.url();
-    const status = res.status();
-    if (!url.includes('shipsticks')) return;
-
-    const h         = res.headers();
-    const setCookie = h['set-cookie'] || '';
-    const location  = h['location']   || '';
-    const marker    = status >= 300 ? '⚠' : ' ';
-    console.log(`[${label}][RES] ${marker} ${status} ${url}${location ? ' → ' + location : ''}`);
-
-    if (setCookie) console.log(`  set-cookie: ${setCookie.substring(0, 400)}`);
-
-    if (url.includes('/graphql')) {
-      try {
-        const body = await res.json();
-        if (body?.data?.currentUser !== undefined) {
-          console.log(`  currentUser: ${JSON.stringify(body.data.currentUser)}`);
-        }
-      } catch { /* non-JSON */ }
-    }
-  });
-}
-
-/** Print every shipsticks cookie currently in the browser context. */
-async function dumpCookies(context, label) {
-  const relevant = (await context.cookies()).filter(c => c.domain.includes('shipsticks'));
-  console.log(`\n${'─'.repeat(70)}`);
-  console.log(`COOKIES — ${label}`);
-  console.log('─'.repeat(70));
-  if (!relevant.length) {
-    console.log('  (none)');
-  } else {
-    relevant.forEach(c =>
-      console.log(
-        `  ${c.name}=${c.value.substring(0, 80)}\n` +
-        `    domain=${c.domain}  path=${c.path}  sameSite=${c.sameSite}  secure=${c.secure}`
-      )
-    );
-  }
-  console.log('─'.repeat(70));
-}
-
 // ─── test ───────────────────────────────────────────────────────────────────
 
 test('prod — bill pay auth: phone verification gate + logout sync', async ({ page, context }) => {
 
-  // ── STEP 1: Log in on the production main site ────────────────────────────
-  attachNetworkLogger(page, 'MAIN');
-
   const home = new HomePage(page, PROD_URL);
-  await home.goto();  // handles chat widget blocking + cookie banner
 
-  await home.clickSignIn();
-  await home.assertSignInModalVisible();
+  // ── STEP 1: Log in on the production main site ────────────────────────────
+  await withNetworkLogging(page, 'MAIN', async () => {
+    await home.goto();  // handles chat widget blocking + cookie banner
 
-  const modal = page.getByRole('dialog');
+    await home.clickSignIn();
+    await home.assertSignInModalVisible();
 
-  // Use typeWithFocusGuard so chat widget / focus stealing does not corrupt input
-  await home.typeWithFocusGuard(
-    modal.getByRole('textbox', { name: /email/i }),
-    PROD_EMAIL
-  );
-  // Password field is type="password" — typeWithFocusGuard works on any input
-  await home.typeWithFocusGuard(
-    modal.locator('input[type="password"]'),
-    PROD_PASSWORD
-  );
+    const modal = page.getByRole('dialog');
 
-  await modal.getByRole('button', { name: 'Log In' }).click();
+    // Use typeWithFocusGuard so chat widget / focus stealing does not corrupt input
+    await home.typeWithFocusGuard(
+      modal.getByRole('textbox', { name: /email/i }),
+      PROD_EMAIL
+    );
+    // Password field is type="password" — typeWithFocusGuard works on any input
+    await home.typeWithFocusGuard(
+      modal.locator('input[type="password"]'),
+      PROD_PASSWORD
+    );
 
-  // The Account options menu button appearing confirms we are logged in
-  await expect(page.getByRole('button', { name: 'Account options menu' })).toBeVisible({ timeout: 25000 });
+    await modal.getByRole('button', { name: 'Log In' }).click();
+
+    // The Account options menu button appearing confirms we are logged in
+    await expect(page.getByRole('button', { name: 'Account options menu' })).toBeVisible({ timeout: 25000 });
+  });
+
   console.log('\n✓ Logged in on production main site');
   await dumpCookies(context, 'AFTER MAIN-SITE LOGIN');
 
@@ -135,9 +82,11 @@ test('prod — bill pay auth: phone verification gate + logout sync', async ({ p
   console.log(`\n══ Bill pay link href — VISIT 1: ${billPayHref1}`);
 
   // ── STEP 3: First visit — attach logger before the tab is created ─────────
+  // attachNetworkLogging (persistent) is used here because context.once() is a
+  // synchronous callback — withNetworkLogging cannot be awaited inside it.
   context.once('page', newTab => {
     console.log('\n══ NEW TAB opened — VISIT 1 ══');
-    attachNetworkLogger(newTab, 'VISIT-1');
+    attachNetworkLogging(newTab, 'VISIT-1');
   });
 
   const [tab1] = await Promise.all([
@@ -160,34 +109,30 @@ test('prod — bill pay auth: phone verification gate + logout sync', async ({ p
   if (loggedInVisit1) {
     console.log('\n── Logging out from bill pay ──');
 
-    // Capture every response during logout to see which cookies get cleared
-    tab1.on('response', async res => {
-      if (!res.url().includes('shipsticks')) return;
-      const h = res.headers();
-      if (h['set-cookie'] || res.status() >= 300) {
-        console.log(`[LOGOUT][RES] ${res.status()} ${res.url()}`);
-        if (h['set-cookie']) console.log(`  set-cookie: ${h['set-cookie'].substring(0, 400)}`);
-        if (h['location'])   console.log(`  location:   ${h['location']}`);
-      }
-    });
-
-    // Logout is in the footer "Account" section — directly visible without any dropdown
     const logoutLink = tab1.getByRole('link', { name: 'Logout' }).first();
     await expect(logoutLink).toBeVisible({ timeout: 10000 });
-    await logoutLink.click();
 
-    // After logout, bill pay redirects back to www.shipsticks.com
-    await tab1.waitForURL(/shipsticks\.com/, { timeout: 15000 });
-    await tab1.waitForLoadState('domcontentloaded');
-    await tab1.waitForTimeout(2000);
+    // withNetworkLogging wraps the logout steps so we can see exactly which
+    // cookies are cleared and where the redirect lands
+    await withNetworkLogging(tab1, 'LOGOUT', async () => {
+      await logoutLink.click();
+      await tab1.waitForURL(/shipsticks\.com/, { timeout: 15000 });
+      await tab1.waitForLoadState('domcontentloaded');
+      await tab1.waitForTimeout(2000);
+    });
+
     await tab1.screenshot({ path: 'tmp/prod-after-billpay-logout.png', fullPage: false });
     console.log(`✓ After logout — tab landed on: ${tab1.url()}`);
     await dumpCookies(context, 'AFTER BILL-PAY LOGOUT');
 
     // ── STEP 5: Check main site — is user still logged in? ──────────────────
     await page.bringToFront();
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(3000);
+
+    await withNetworkLogging(page, 'MAIN-RELOAD', async () => {
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(3000);
+    });
+
     await page.screenshot({ path: 'tmp/prod-main-after-billpay-logout.png', fullPage: false });
 
     const stillLoggedIn = await page.getByRole('button', { name: 'Account options menu' }).isVisible();
@@ -218,7 +163,7 @@ test('prod — bill pay auth: phone verification gate + logout sync', async ({ p
 
       context.once('page', newTab => {
         console.log('\n══ NEW TAB opened — VISIT 2 ══');
-        attachNetworkLogger(newTab, 'VISIT-2');
+        attachNetworkLogging(newTab, 'VISIT-2');
       });
 
       const [tab2] = await Promise.all([

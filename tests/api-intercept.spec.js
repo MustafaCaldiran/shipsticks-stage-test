@@ -5,6 +5,7 @@ const { test, expect } = require('@playwright/test');
 const HomePage = require('../pages/HomePage');
 const BookingStep1Page = require('../pages/BookingStep1Page');
 const testData = require('../utils/testData');
+const { attachNetworkLogging, dumpCookies } = require('../utils/networkLogger');
 async function goToBookingStep1(page, baseURL) {
   const home = new HomePage(page, baseURL);
   const booking = new BookingStep1Page(page, baseURL);
@@ -453,61 +454,30 @@ test('intercepts both createMobileVerification AND the code-confirmation mutatio
   await home.userAccount.click();
   await expect(home.onlineBillPay).toBeVisible({ timeout: 5000 });
 
-  // 2. Capture the new tab that opens when Online Bill Pay is clicked
+  // 2. Capture the new tab that opens when Online Bill Pay is clicked.
+  // attachNetworkLogging (persistent) is used inside context.once() because the
+  // callback is synchronous — listeners must be attached before navigation starts.
+  page.context().once('page', newTab => {
+    console.log('\n══ Online Bill Pay tab — all requests ══');
+    attachNetworkLogging(newTab, 'BILL-PAY');
+  });
+
   const [billPayTab] = await Promise.all([
     page.context().waitForEvent('page'),
     home.onlineBillPay.click(),
   ]);
 
+  // 3. Wait for the page to fully settle so all auth calls complete
   await billPayTab.waitForLoadState('domcontentloaded');
+  await billPayTab.waitForTimeout(3000);
 
-  // 3. Log every request the new tab makes so we can see auth headers / cookies
-  console.log('\n══ Online Bill Pay tab — all requests ══');
-  billPayTab.on('request', req => {
-    const headers = req.headers();
-    const cookieHeader = headers['cookie'] || '(none)';
-    const authHeader   = headers['authorization'] || '(none)';
-    console.log(`[REQ] ${req.method()} ${req.url()}`);
-    console.log(`      cookie:        ${cookieHeader.substring(0, 200)}`);
-    console.log(`      authorization: ${authHeader}`);
-  });
-
-  // 4. Log every response so we can see 401s, redirects, and Set-Cookie headers
-  billPayTab.on('response', async res => {
-    const status = res.status();
-    const setCookie = res.headers()['set-cookie'] || '(none)';
-    const location  = res.headers()['location']   || '';
-    const label = status >= 300 ? '⚠ ' : '  ';
-    console.log(`${label}[RES] ${status} ${res.url()}${location ? ' → ' + location : ''}`);
-    if (setCookie !== '(none)') {
-      console.log(`      set-cookie: ${setCookie.substring(0, 200)}`);
-    }
-    // Log GraphQL response bodies so we can see if GetCurrentUser returns null user
-    if (res.url().includes('/graphql')) {
-      try {
-        const body = await res.json();
-        if (body?.data?.currentUser !== undefined) {
-          console.log(`      currentUser: ${JSON.stringify(body.data.currentUser)}`);
-        }
-      } catch { /* binary or non-JSON */ }
-    }
-  });
-
-  // 5. Wait for the page to fully settle so all auth calls complete
-  await billPayTab.waitForLoadState('networkidle');
-
-  // 6. Take a screenshot so we can see the logged-in / logged-out state visually
+  // 4. Take a screenshot so we can see the logged-in / logged-out state visually
   await billPayTab.screenshot({ path: 'tmp/bill-pay-tab.png', fullPage: true });
   console.log('\nScreenshot saved → tmp/bill-pay-tab.png');
 
-  // 7. Also dump all cookies that exist in the context at the point the new tab opened
-  const allCookies = await page.context().cookies();
-  const stagingCookies = allCookies.filter(c => c.domain.includes('shipsticks'));
-  console.log('\n── Staging cookies in browser context ──');
-  stagingCookies.forEach(c =>
-    console.log(`  ${c.name}=${c.value.substring(0, 60)}  domain=${c.domain}  path=${c.path}  sameSite=${c.sameSite}  secure=${c.secure}`)
-  );
+  // 5. Dump all cookies in the context so we can confirm which domains have auth
+  await dumpCookies(page.context(), 'STAGING — BILL PAY TAB LOADED');
 
-  // 8. (pause removed for headless run — re-add for manual inspection)
+  // (pause removed for headless run — re-add for manual inspection)
   // await billPayTab.pause();
 });
