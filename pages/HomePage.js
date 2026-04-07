@@ -13,6 +13,8 @@ class HomePage extends BasePage {
         this.getStartedButton = page.getByRole('button', { name: 'Get started' }).first();
         this.heroHeading = page.getByRole('heading', { name: /Skip Baggage Claim/i });
         this.firstAutocompleteSuggestion = page.getByRole('option').first();
+        this.userAccount = page.getByRole('button', { name: 'Account options menu' });
+        this.onlineBillPay= page.getByRole('menuitem', { name: 'Online Bill Pay' })
 
         // Sign in flow locators
         this.signInButton = page.getByText('Sign In')
@@ -46,6 +48,7 @@ class HomePage extends BasePage {
         this.finishSignUpButton =    page.getByRole('button', { name: /Finish sign up and verify number/i })
         this.verifyYourNumberHeading =  page.getByRole('heading', { name: /Verify your phone number/i })
         this.skipForNowButtonInVerificationStep =   page.getByRole('button', { name: /Skip for now/i })
+        this.verifyYourNumberConfirmButton = page.getByRole('button', { name: 'Confirm' });
 
     }
 
