@@ -10,6 +10,8 @@
     "test:parallel": "WORKERS=4 FULLY_PARALLEL=true playwright test",
     "test:parallel-headed": "HEADED=true SLOW_MO=300 WORKERS=4 FULLY_PARALLEL=true playwright test",
     "test:ui": "playwright test --ui",
+    "test:verbose": "VERBOSE=true playwright test",
+    "test:verbose:ui": "VERBOSE=true playwright test --ui --trace on",
     "test:chromium": "BROWSERS=chromium playwright test",
     "test:firefox": "BROWSERS=firefox playwright test",
     "test:webkit": "BROWSERS=webkit playwright test",

@@ -14,7 +14,7 @@
 //   npx playwright test tests/create-user.spec.js --project=chromium --grep "UI flow"
 //   npx playwright test tests/create-user.spec.js --project=chromium --grep "API only"
 
-const { test } = require('@playwright/test');
+const { test, expect } = require('@playwright/test');
 const { withNetworkLogging, dumpCookies } = require('../utils/networkLogger');
 const { createUserViaUi, createUserViaApi } = require('../utils/createUser');
 
@@ -74,4 +74,52 @@ test('create user — API only (no UI)', async ({ request, baseURL }) => {
   console.log(`  phoneNumber : ${user.phoneNumber}`);
   console.log(`  authToken   : ${user.authToken.substring(0, 40)}…`);
   console.log('═'.repeat(70));
+});
+
+// ─── Test 3: Bulk — create 20 users on prod via API ──────────────────────────
+
+test('create 20 users — API bulk (prod)', async ({ baseURL }) => {
+  test.setTimeout(180000);
+
+  const TOTAL = 20;
+  const DELAY_MS = 500; // pause between calls to avoid rate limiting
+  const created = [];
+  const failed  = [];
+
+  for (let i = 1; i <= TOTAL; i++) {
+    try {
+      let user;
+      try {
+        user = await createUserViaApi(baseURL);
+      } catch {
+        // Retry once — first call can get a transient HTML response on cold start
+        await new Promise(r => setTimeout(r, 1000));
+        user = await createUserViaApi(baseURL);
+      }
+      created.push(user);
+      console.log(`[${i}/${TOTAL}] ✓  ${user.email}  /  ${user.password}`);
+    } catch (err) {
+      failed.push({ index: i, error: err.message });
+      console.log(`[${i}/${TOTAL}] ✗  ${err.message}`);
+    }
+    if (i < TOTAL) await new Promise(r => setTimeout(r, DELAY_MS));
+  }
+
+  console.log('\n' + '═'.repeat(70));
+  console.log(`BULK USER CREATION — ${created.length}/${TOTAL} succeeded`);
+  console.log('═'.repeat(70));
+  console.log('  #   Email                              Password');
+  console.log('  ' + '─'.repeat(66));
+  created.forEach((u, idx) => {
+    console.log(`  ${String(idx + 1).padStart(2)}  ${u.email.padEnd(35)}  ${u.password}`);
+  });
+
+  if (failed.length) {
+    console.log('\n  Failed:');
+    failed.forEach(f => console.log(`  [${f.index}] ${f.error}`));
+  }
+
+  console.log('═'.repeat(70));
+
+  expect(created.length).toBe(TOTAL);
 });

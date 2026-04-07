@@ -83,14 +83,14 @@ async function createUserViaApi(baseURL, requestContext) {
     },
   });
 
-  if (ownContext) await ctx.dispose();
-
   if (!response.ok()) {
     const body = await response.text();
+    if (ownContext) await ctx.dispose();
     throw new Error(`createUserViaApi failed — ${response.status()}: ${body}`);
   }
 
   const body = await response.json();
+  if (ownContext) await ctx.dispose();
 
   return {
     id:          body.id,

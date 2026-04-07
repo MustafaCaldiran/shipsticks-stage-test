@@ -40,9 +40,9 @@ module.exports = defineConfig({
     slowMo: env.slowMo,
     viewport: { width: 1280, height: 800 },
     ignoreHTTPSErrors: true,
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    trace:      process.env.VERBOSE === 'true' ? 'on' : 'on-first-retry',
+    screenshot: process.env.VERBOSE === 'true' ? 'on' : 'only-on-failure',
+    video:      process.env.VERBOSE === 'true' ? 'on' : 'retain-on-failure',
     launchOptions: {
       args: [
         '--disable-web-security',
