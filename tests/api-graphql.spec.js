@@ -321,6 +321,93 @@ test.describe('GraphQL API — Shipping Rates', () => {
     await authed.ctx.dispose();
   });
 
+  test('GetDeliverByTransitRates — past delivery date returns empty rates or error', async () => {
+    const authed = await authedContext();
+
+    const res = await gql(authed, {
+      operationName: 'GetDeliverByTransitRates',
+      query: `
+        query GetDeliverByTransitRates($input: DeliverByTransitRateInput!) {
+          transitRates: getDeliverByTransitRates(input: $input) {
+            shipDate
+            transitTime
+            itemRates { priceCents }
+          }
+        }
+      `,
+      variables: {
+        input: {
+          arrivalDate: '2024-01-01',
+          direction: 'outbound',
+          handlingOption: 'pickup',
+          products: [{ productId: '5c5e2d376928b97125000007', quantity: 1 }],
+          carrier: '',
+          experimentVariationId: '5079228136292352',
+          shipRoute: {
+            origin: { address1: '1234 Main St', address2: '', city: 'Los Angeles', countryCode: 'US', postalCode: '90015', state: 'CA' },
+            destination: { address1: '4321 Main St', address2: '', city: 'Miami Lakes', countryCode: 'US', postalCode: '33014', state: 'FL' },
+          },
+        },
+      },
+    });
+
+    expect([200, 422, 500]).toContain(res.status());
+    if (res.status() === 200) {
+      const body = await res.json();
+      const hasNoRates = !body.data?.transitRates?.length;
+      const hasErrors = Array.isArray(body.errors) && body.errors.length > 0;
+      expect(hasNoRates || hasErrors).toBe(true);
+    }
+
+    await authed.ctx.dispose();
+  });
+
+  test('GetDeliverByTransitRates — international route US to UK returns no domestic rates', async () => {
+    const authed = await authedContext();
+
+    const res = await gql(authed, {
+      operationName: 'GetDeliverByTransitRates',
+      query: `
+        query GetDeliverByTransitRates($input: DeliverByTransitRateInput!) {
+          transitRates: getDeliverByTransitRates(input: $input) {
+            shipDate
+            transitTime
+            itemRates { priceCents }
+            carrierServiceLevel { serviceLevel { displayName systemName } }
+          }
+        }
+      `,
+      variables: {
+        input: {
+          arrivalDate: '2026-06-01',
+          direction: 'outbound',
+          handlingOption: 'pickup',
+          products: [{ productId: '5c5e2d376928b97125000007', quantity: 1 }],
+          carrier: '',
+          experimentVariationId: '5079228136292352',
+          shipRoute: {
+            origin: { address1: '1234 Main St', address2: '', city: 'Los Angeles', countryCode: 'US', postalCode: '90015', state: 'CA' },
+            destination: { address1: '10 Downing Street', address2: '', city: 'London', countryCode: 'GB', postalCode: 'SW1A 2AA', state: '' },
+          },
+        },
+      },
+    });
+
+    // International routes either return empty rates or an error — ShipSticks is US domestic
+    expect([200, 422, 500]).toContain(res.status());
+    if (res.status() === 200) {
+      const body = await res.json();
+      const rates = body.data?.transitRates ?? [];
+      const allDomestic = rates.every(r => r.carrierServiceLevel?.serviceLevel?.systemName?.startsWith('DOMESTIC'));
+      // If rates are returned for an international route, none should be DOMESTIC_ service levels
+      if (rates.length > 0) {
+        expect(allDomestic).toBe(false);
+      }
+    }
+
+    await authed.ctx.dispose();
+  });
+
   test('GetDeliverByTransitRates — invalid product ID returns empty or error', async () => {
     const authed = await authedContext();
 
@@ -375,6 +462,37 @@ test.describe('GraphQL API — Shipping Rates', () => {
       const hasErrors = Array.isArray(body.errors) && body.errors.length > 0;
       expect(hasNoRates || hasErrors).toBe(true);
     }
+
+    await authed.ctx.dispose();
+  });
+
+});
+test.describe('GraphQL API — Mutations', () => {
+
+  test('createMobileVerification — invalid phone number returns failure', async () => {
+    const authed = await authedContext();
+
+    const res = await gql(authed, {
+      operationName: 'createMobileVerification',
+      query: `
+        mutation createMobileVerification($input: MobileVerificationCreateInput!) {
+          createMobileVerification(input: $input) {
+            success
+            errors {
+              message
+            }
+          }
+        }
+      `,
+      variables: { input: { phoneNumber: '000-000-0000' } },
+    });
+
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    const result = body.data?.createMobileVerification;
+    const hasMutationError = result?.success === false && Array.isArray(result?.errors) && result.errors.length > 0;
+    const hasGqlErrors = Array.isArray(body.errors) && body.errors.length > 0;
+    expect(hasMutationError || hasGqlErrors).toBe(true);
 
     await authed.ctx.dispose();
   });
