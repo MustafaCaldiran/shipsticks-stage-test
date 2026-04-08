@@ -14,7 +14,7 @@ const scenarios = {
             },
         ],
         serviceLevel: 'Ground',
-        deliveryDate: 'Wednesday, April 15, 2026',
+        deliveryDate: 'Wednesday, April 29, 2026',
         // coverageAmount: '$5,000.00 ($29.99)',
            coverageAmount: '$2,500.00 ($8.99)',
         pickupMethod: 'haveThemPickedUp',
@@ -31,7 +31,7 @@ const scenarios = {
             },
         ],
         serviceLevel: 'Ground',
-        deliveryDate: 'Wednesday, April 15, 2026',
+        deliveryDate: 'Wednesday, April 29, 2026',
     },
 };
 

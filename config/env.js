@@ -53,6 +53,6 @@ module.exports = {
     destination:  '4321 Main St, Miami Lakes, FL, USA',
     itemType:     'Golf Bag (Standard)',
     serviceLevel: 'Ground',
-    deliveryDate: 'April 8, 2026',
+    deliveryDate: 'April 29, 2026',
   },
 };
