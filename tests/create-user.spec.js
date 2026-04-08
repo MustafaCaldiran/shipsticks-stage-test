@@ -123,3 +123,43 @@ test('create 20 users — API bulk (prod)', async ({ baseURL }) => {
 
   expect(created.length).toBe(TOTAL);
 });
+
+// ─── Test 4: Bulk — create 20 users in parallel ───────────────────────────────
+
+test('create 20 users — API parallel (prod)', async ({ baseURL }) => {
+  test.setTimeout(60000);
+
+  const TOTAL = 20;
+
+  const results = await Promise.allSettled(
+    Array.from({ length: TOTAL }, (_, i) =>
+      createUserViaApi(baseURL).then(user => ({ index: i + 1, user }))
+    )
+  );
+
+  const created = results
+    .filter(r => r.status === 'fulfilled')
+    .map(r => r.value);
+
+  const failed = results
+    .filter(r => r.status === 'rejected')
+    .map((r, i) => ({ index: i + 1, error: r.reason?.message ?? r.reason }));
+
+  console.log('\n' + '═'.repeat(70));
+  console.log(`BULK USER CREATION (PARALLEL) — ${created.length}/${TOTAL} succeeded`);
+  console.log('═'.repeat(70));
+  console.log('  #   Email                              Password');
+  console.log('  ' + '─'.repeat(66));
+  created.forEach(({ index, user }) => {
+    console.log(`  ${String(index).padStart(2)}  ${user.email.padEnd(35)}  ${user.password}`);
+  });
+
+  if (failed.length) {
+    console.log('\n  Failed:');
+    failed.forEach(f => console.log(`  [${f.index}] ${f.error}`));
+  }
+
+  console.log('═'.repeat(70));
+
+  expect(created.length).toBe(TOTAL);
+});
