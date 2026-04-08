@@ -1,27 +1,60 @@
 // tests/create-user.spec.js
 //
-// Two tests — one per implementation in utils/createUser.js:
+// Tests — one per implementation in utils/createUser.js:
 //
 //   1. UI flow  — drives the full sign-up form, wraps it in withNetworkLogging
 //                 so every request/response and POST body is visible.
 //
 //   2. API only — calls POST /api/v5/users directly, no browser needed (~1s).
 //
-// Run both:
+//   3. Bulk sequential — creates 20 users one at a time with a delay.
+//
+//   4. Bulk parallel   — creates 20 users all at once with Promise.allSettled.
+//                        Writes credentials to tmp/created-users.txt.
+//
+// Run all:
 //   npx playwright test tests/create-user.spec.js --project=chromium
 //
 // Run one:
 //   npx playwright test tests/create-user.spec.js --project=chromium --grep "UI flow"
 //   npx playwright test tests/create-user.spec.js --project=chromium --grep "API only"
+//   npx playwright test tests/create-user.spec.js --project=chromium --grep "sequential"
+//   npx playwright test tests/create-user.spec.js --project=chromium --grep "parallel"
 
 const { test, expect } = require('@playwright/test');
+const fs   = require('fs');
+const path = require('path');
 const { withNetworkLogging, dumpCookies } = require('../utils/networkLogger');
 const { createUserViaUi, createUserViaApi } = require('../utils/createUser');
+
+// ─── shared helper ────────────────────────────────────────────────────────────
+
+function saveToFile(baseURL, created, failed) {
+  const outPath = path.resolve(__dirname, '../tmp/created-users.txt');
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+
+  const lines = [
+    `Created: ${new Date().toISOString()}`,
+    `Environment: ${baseURL}`,
+    `Total: ${created.length} created, ${failed.length} failed`,
+    '',
+    '#   Email                              Password',
+    '─'.repeat(66),
+    ...created.map(({ index, user }) =>
+      `${String(index).padStart(2)}  ${user.email.padEnd(35)}  ${user.password}`
+    ),
+    ...(failed.length
+      ? ['', 'Failed:', ...failed.map(f => `  [${f.index}] ${f.error}`)]
+      : []),
+  ];
+
+  fs.writeFileSync(outPath, lines.join('\n') + '\n');
+  console.log(`\nCredentials saved → tmp/created-users.txt`);
+}
 
 // ─── Test 1: UI flow with network capture ────────────────────────────────────
 
 test('create user — UI flow with network capture', async ({ page, context, baseURL }) => {
-  // Also capture POST bodies so the raw /api/v5/users payload is visible
   const capturedRequests = [];
   page.on('request', req => {
     if (!req.url().includes('shipsticks')) return;
@@ -76,15 +109,15 @@ test('create user — API only (no UI)', async ({ request, baseURL }) => {
   console.log('═'.repeat(70));
 });
 
-// ─── Test 3: Bulk — create 20 users on prod via API ──────────────────────────
+// ─── Test 3: Bulk sequential ──────────────────────────────────────────────────
 
-test('create 20 users — API bulk (prod)', async ({ baseURL }) => {
+test('create 20 users — API bulk sequential (prod)', async ({ baseURL }) => {
   test.setTimeout(180000);
 
-  const TOTAL = 20;
-  const DELAY_MS = 500; // pause between calls to avoid rate limiting
-  const created = [];
-  const failed  = [];
+  const TOTAL    = 20;
+  const DELAY_MS = 500;
+  const created  = [];
+  const failed   = [];
 
   for (let i = 1; i <= TOTAL; i++) {
     try {
@@ -92,11 +125,10 @@ test('create 20 users — API bulk (prod)', async ({ baseURL }) => {
       try {
         user = await createUserViaApi(baseURL);
       } catch {
-        // Retry once — first call can get a transient HTML response on cold start
         await new Promise(r => setTimeout(r, 1000));
         user = await createUserViaApi(baseURL);
       }
-      created.push(user);
+      created.push({ index: i, user });
       console.log(`[${i}/${TOTAL}] ✓  ${user.email}  /  ${user.password}`);
     } catch (err) {
       failed.push({ index: i, error: err.message });
@@ -106,34 +138,37 @@ test('create 20 users — API bulk (prod)', async ({ baseURL }) => {
   }
 
   console.log('\n' + '═'.repeat(70));
-  console.log(`BULK USER CREATION — ${created.length}/${TOTAL} succeeded`);
+  console.log(`BULK USER CREATION (SEQUENTIAL) — ${created.length}/${TOTAL} succeeded`);
   console.log('═'.repeat(70));
   console.log('  #   Email                              Password');
   console.log('  ' + '─'.repeat(66));
-  created.forEach((u, idx) => {
-    console.log(`  ${String(idx + 1).padStart(2)}  ${u.email.padEnd(35)}  ${u.password}`);
+  created.forEach(({ index, user }) => {
+    console.log(`  ${String(index).padStart(2)}  ${user.email.padEnd(35)}  ${user.password}`);
   });
-
   if (failed.length) {
     console.log('\n  Failed:');
     failed.forEach(f => console.log(`  [${f.index}] ${f.error}`));
   }
-
   console.log('═'.repeat(70));
 
+  saveToFile(baseURL, created, failed);
   expect(created.length).toBe(TOTAL);
 });
 
-// ─── Test 4: Bulk — create 20 users in parallel ───────────────────────────────
+// ─── Test 4: Bulk parallel ────────────────────────────────────────────────────
 
-test('create 20 users — API parallel (prod)', async ({ baseURL }) => {
+test('create 20 users — API bulk parallel (prod)', async ({ baseURL }) => {
   test.setTimeout(60000);
 
   const TOTAL = 20;
 
+  // Stagger starts by 200ms per slot so all 20 don't hit the server at the
+  // exact same instant and trigger rate limiting, while still running in parallel
   const results = await Promise.allSettled(
     Array.from({ length: TOTAL }, (_, i) =>
-      createUserViaApi(baseURL).then(user => ({ index: i + 1, user }))
+      new Promise(r => setTimeout(r, i * 200))
+        .then(() => createUserViaApi(baseURL))
+        .then(user => ({ index: i + 1, user }))
     )
   );
 
@@ -153,13 +188,12 @@ test('create 20 users — API parallel (prod)', async ({ baseURL }) => {
   created.forEach(({ index, user }) => {
     console.log(`  ${String(index).padStart(2)}  ${user.email.padEnd(35)}  ${user.password}`);
   });
-
   if (failed.length) {
     console.log('\n  Failed:');
     failed.forEach(f => console.log(`  [${f.index}] ${f.error}`));
   }
-
   console.log('═'.repeat(70));
 
+  saveToFile(baseURL, created, failed);
   expect(created.length).toBe(TOTAL);
 });
