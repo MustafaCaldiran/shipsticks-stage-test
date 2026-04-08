@@ -30,7 +30,6 @@
 const { request: playwrightRequest } = require('@playwright/test');
 const HomePage = require('../pages/HomePage');
 const testData = require('./testData');
-const env = require('../config/env');
 
 // ─── API implementation ──────────────────────────────────────────────────────
 
@@ -50,13 +49,14 @@ const env = require('../config/env');
 async function createUserViaApi(baseURL, requestContext) {
   const signUpData = testData.authData.signUp;
 
-  // POST redirects are not followed automatically — use the canonical www. host.
-  // env.apiUrl already carries the correct www. prefix for the active environment.
-  // If the caller passed a custom baseURL we still apply the www. transform for
-  // consistency, but in normal usage baseURL === env.baseUrl and apiUrl is correct.
-  const apiBase = baseURL === env.baseUrl
-    ? env.apiUrl
-    : baseURL.replace('://app.', '://www.app.');
+  // Use baseURL directly — no host transformation.
+  // The REST endpoint /api/v5/users lives on the same host as the app (app.*).
+  // The www.app.* variant is only needed by globalSetup for the Rails session
+  // login (/users/sign_in with CSRF). Applying it here sends the request to
+  // the wrong host and causes the call to fail.
+  const apiBase = baseURL;
+
+  console.log(`createUserViaApi: POST ${apiBase}/api/v5/users`);
 
   const ownContext = !requestContext;
   const ctx = requestContext ?? await playwrightRequest.newContext({

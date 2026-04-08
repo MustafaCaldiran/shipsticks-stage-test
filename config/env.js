@@ -2,9 +2,11 @@ require('dotenv').config();
 
 // ─── Environment map ──────────────────────────────────────────────────────────
 // Each entry has two URLs:
-//   appUrl — the browser-facing app URL used by Playwright's baseURL and page objects
-//   apiUrl — the www. variant required by the Rails login endpoint (CSRF + session cookies)
-//            The two hosts differ only for ShipSticks; apiUrl === appUrl on local.
+//   appUrl — the browser-facing app URL used by Playwright's baseURL, page objects,
+//            and REST API calls (e.g. /api/v5/users). Always use this for API requests.
+//   apiUrl — the www.app.* variant used ONLY by globalSetup for the Rails session
+//            login (/users/sign_in with CSRF token). Do NOT use this for REST API
+//            calls — it is the wrong host for everything except the session login.
 
 const ENV_CONFIGS = {
   local: {
