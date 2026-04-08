@@ -35,8 +35,7 @@ module.exports = defineConfig({
   reporter: [['html', { open: 'never' }], ['line']],
   use: {
     baseURL: env.baseUrl,
-    // headless: !env.headed,
-    headless: false,
+    headless: !env.headed,
     slowMo: env.slowMo,
     viewport: { width: 1280, height: 800 },
     ignoreHTTPSErrors: true,

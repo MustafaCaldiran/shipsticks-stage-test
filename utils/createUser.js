@@ -30,6 +30,7 @@
 const { request: playwrightRequest } = require('@playwright/test');
 const HomePage = require('../pages/HomePage');
 const testData = require('./testData');
+const env = require('../config/env');
 
 // ─── API implementation ──────────────────────────────────────────────────────
 
@@ -49,8 +50,13 @@ const testData = require('./testData');
 async function createUserViaApi(baseURL, requestContext) {
   const signUpData = testData.authData.signUp;
 
-  // POST redirects are not followed automatically — use the canonical www. host
-  const apiBase = baseURL.replace('://app.', '://www.app.');
+  // POST redirects are not followed automatically — use the canonical www. host.
+  // env.apiUrl already carries the correct www. prefix for the active environment.
+  // If the caller passed a custom baseURL we still apply the www. transform for
+  // consistency, but in normal usage baseURL === env.baseUrl and apiUrl is correct.
+  const apiBase = baseURL === env.baseUrl
+    ? env.apiUrl
+    : baseURL.replace('://app.', '://www.app.');
 
   const ownContext = !requestContext;
   const ctx = requestContext ?? await playwrightRequest.newContext({

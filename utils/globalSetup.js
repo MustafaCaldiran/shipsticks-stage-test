@@ -1,13 +1,13 @@
 const { request } = require('@playwright/test');
 const path = require('path');
 const fs = require('fs');
+const env = require('../config/env');
 
 const AUTH_CREDENTIALS = {
     email: 'john@gmail.com',
     password: 'Password',
 };
 
-const BASE_URL = 'https://www.app.staging.shipsticks.com';
 const STORAGE_STATE_PATH = path.resolve(__dirname, '../.auth/storageState.json');
 
 /**
@@ -26,8 +26,15 @@ const STORAGE_STATE_PATH = path.resolve(__dirname, '../.auth/storageState.json')
  *
  * This replaces the old UI-based login (launching a browser, clicking through
  * the sign-in modal) — it is faster, more reliable, and has no flakiness risk.
+ *
+ * The login URL comes from env.apiUrl (config/env.js) so it follows whichever
+ * TEST_ENV is active — no hard-coded staging URL in this file.
  */
 module.exports = async function globalSetup() {
+    const BASE_URL = env.apiUrl;
+
+    console.log(`globalSetup: logging in against ${BASE_URL} (TEST_ENV=${env.testEnv})`);
+
     // Ensure .auth/ directory exists
     fs.mkdirSync(path.dirname(STORAGE_STATE_PATH), { recursive: true });
 
@@ -47,9 +54,8 @@ module.exports = async function globalSetup() {
             break;
         }
         if (attempt === 3) {
-            // Staging server is unavailable — skip login, tests that don't need
-            // auth (interception, booking UI) will still run fine.
-            console.warn('globalSetup: staging server did not return CSRF token after 3 attempts — skipping login. Tests requiring auth may fail.');
+            // Server is unavailable — skip login; tests that don't need auth will still run.
+            console.warn(`globalSetup: ${env.testEnv} server did not return CSRF token after 3 attempts — skipping login. Tests requiring auth may fail.`);
             await apiContext.dispose();
             return;
         }
