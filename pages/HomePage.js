@@ -21,7 +21,7 @@ class HomePage extends BasePage {
         this.signInMenuItem = page.getByRole('menuitem', { name: 'Sign In' })
 
         //Modal elements
-        this.loginModalHeading =   page.getByRole('heading', { name: 'Log In' })
+        this.loginModalHeading =   page.getByRole('button', { name: 'Log In' })
         this.shipSticksLogoInModal =   page.getByRole('img', { name: /shipstickstextonlydark/i })
         this.emailFieldInModal =   page.getByPlaceholder('Email address')
         this.passwordFieldInModal =   page.getByRole('textbox', { name: 'Password*' })
