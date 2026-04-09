@@ -155,6 +155,63 @@ test('create 20 users — API bulk sequential (prod)', async ({ baseURL }) => {
   expect(created.length).toBe(TOTAL);
 });
 
+// ─── Test 5: Rate limit stress — parallel workers for 60s (prod) ─────────────
+
+test('rate limit stress — parallel workers for 60s (prod)', async ({ baseURL }) => {
+  test.setTimeout(90000); // 90s timeout to give the 60s run room to finish
+
+  const DURATION_MS = 60_000;
+  const CONCURRENCY = 10;
+  const deadline    = Date.now() + DURATION_MS;
+
+  const created        = [];
+  const failed         = [];
+  let   firstRateLimit = null;
+
+  async function worker(workerId) {
+    while (Date.now() < deadline) {
+      try {
+        const user  = await createUserViaApi(baseURL);
+        const entry = { index: created.length + 1, user };
+        created.push(entry);
+        console.log(`[W${workerId}] ✓  ${user.email}`);
+      } catch (err) {
+        const isRateLimit = err.message.includes('429') ||
+                            err.message.toLowerCase().includes('rate');
+        if (isRateLimit && !firstRateLimit) {
+          firstRateLimit = { workerId, ts: Date.now(), error: err.message };
+          console.log(`[W${workerId}] ⚠  RATE LIMIT HIT — ${new Date().toISOString()}`);
+        }
+        failed.push({ index: failed.length + 1, error: err.message });
+        console.log(`[W${workerId}] ✗  ${err.message.substring(0, 100)}`);
+        await new Promise(r => setTimeout(r, 500)); // brief back-off before retrying
+      }
+    }
+  }
+
+  await Promise.allSettled(
+    Array.from({ length: CONCURRENCY }, (_, i) => worker(i + 1))
+  );
+
+  console.log('\n' + '═'.repeat(70));
+  console.log(`RATE LIMIT STRESS TEST — ${CONCURRENCY} parallel workers × 60s`);
+  console.log('═'.repeat(70));
+  console.log(`  Created : ${created.length}`);
+  console.log(`  Failed  : ${failed.length}`);
+  if (firstRateLimit) {
+    console.log(`  First rate limit hit by worker W${firstRateLimit.workerId}`);
+    console.log(`  At : ${new Date(firstRateLimit.ts).toISOString()}`);
+    console.log(`  Err: ${firstRateLimit.error.substring(0, 120)}`);
+  } else {
+    console.log('  No rate limit encountered in 60s.');
+  }
+  console.log('═'.repeat(70));
+  console.log(`\n→ ${created.length} users created in 60s across ${CONCURRENCY} parallel workers`);
+
+  saveToFile(baseURL, created, failed);
+  // No hard assertion — this is exploratory, result is in the output
+});
+
 // ─── Test 4: Bulk parallel ────────────────────────────────────────────────────
 
 test('create 20 users — API bulk parallel (prod)', async ({ baseURL }) => {
